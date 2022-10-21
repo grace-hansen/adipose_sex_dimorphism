@@ -1,0 +1,1 @@
+/home/grace/midway/metabolic_traits_GWAS/scripts/locus_zoom_sex.R

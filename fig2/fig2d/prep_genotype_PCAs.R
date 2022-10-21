@@ -1,0 +1,1 @@
+/home/grace/midway/QTL_analyses/eQTL/scripts/prep_genotype_PCAs.R

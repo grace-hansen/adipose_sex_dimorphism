@@ -1,0 +1,1 @@
+/home/grace/midway/ldsc/scripts/get_genetic_correlation.sh

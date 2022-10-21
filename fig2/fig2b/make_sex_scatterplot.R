@@ -1,0 +1,1 @@
+/home/grace/medusa/papers/TWAS/TWAS/sex_scatter/make_sex_scatterplot.R

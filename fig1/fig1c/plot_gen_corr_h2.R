@@ -1,0 +1,1 @@
+/home/grace/midway/ldsc/scripts/plot_gen_corr_h2.R

@@ -1,0 +1,1 @@
+/home/grace/midway/ldsc_seg/scripts/ldscseg_exp.sh

@@ -1,0 +1,1 @@
+/home/grace/midway/QTL_analyses/eQTL/scripts/run_PCA_genotypes.sh

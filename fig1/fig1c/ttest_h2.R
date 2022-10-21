@@ -1,0 +1,1 @@
+/home/grace/midway/ldsc/scripts/ttest_h2.R

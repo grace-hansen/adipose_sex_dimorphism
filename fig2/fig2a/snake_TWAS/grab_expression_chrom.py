@@ -1,0 +1,1 @@
+/home/grace/midway/expression/scripts/snake_TWAS/grab_expression_chrom.py
