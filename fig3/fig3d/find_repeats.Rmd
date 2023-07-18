@@ -1,1 +1,312 @@
-/home/grace/midway/MPRA_repeats/scripts/find_repeats.Rmd
+---
+title: "Location of MPRA variants in repeats"
+author: "Grace Hansen"
+date: "06/29/2019"
+output: pdf_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/midway/MPRA_repeats/')
+library(data.table)
+library(tidyverse)
+library(gridExtra)
+pony_colors<-fread("~/papers/TWAS/pony_palette")
+
+########## For color manipulation of graph ###############
+darken <- function(color, factor=1.2){
+  col <- col2rgb(color)
+  col <- col/factor
+  col <- rgb(t(col), maxColorValue=255)
+  col
+}
+lighten <- function(color, factor=0.8){
+  col <- col2rgb(color)
+  col <- col/factor
+  for (i in 1:length(col)) { if ( col[i] > 255 ) { col[i] = 255 } }
+  col <- rgb(t(col), maxColorValue=255)
+  col
+}
+#########################################################
+```
+
+
+```{r load_data,echo=FALSE}
+EMVar_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/WHR/results/sig_EMVars.bed -wa -wb",intern=TRUE)
+EMVar_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(EMVar_repeats,stringsAsFactors=FALSE)$EMVar_repeats,'\t',fixed=TRUE)))
+colnames(EMVar_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos','pos1','rsid','dot','dot1','source')
+EMVar_repeats=EMVar_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','rsid')]
+EMVar_rsids<-fread("~/projects/MPRA/WHR/results/sig_EMVars.bed",header=FALSE)
+colnames(EMVar_rsids)<-c('chr','pos','pos1','rsid','dot','dot1','source')
+EMVar_repeats=merge(EMVar_rsids[,c('chr','rsid','pos','source')],EMVar_repeats,on='rsid',all.x=TRUE) %>% select(-source,source)
+EMVar_repeats$type="EMVar"
+
+enhancer_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/WHR/results/sig_enhancers.bed -wa -wb",intern=TRUE)
+enhancer_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(enhancer_repeats,stringsAsFactors=FALSE)$enhancer_repeats,'\t',fixed=TRUE)))
+colnames(enhancer_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos','pos1','rsid','dot','dot1','source')
+enhancer_repeats=enhancer_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','rsid')]
+enhancer_rsids<-fread("~/projects/MPRA/WHR/results/sig_enhancers.bed",header=FALSE)
+colnames(enhancer_rsids)<-c('chr','pos','pos1','rsid','dot','dot1','source')
+enhancer_repeats=merge(enhancer_rsids[,c('chr','rsid','pos','source')],enhancer_repeats,on='rsid',all.x=TRUE) %>% select(-source,source)
+enhancer_repeats$type="enhancer"
+
+nonsig_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/WHR/results/nonsig_rsids.bed -wa -wb",intern=TRUE)
+nonsig_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(nonsig_repeats,stringsAsFactors=FALSE)$nonsig_repeats,'\t',fixed=TRUE)))
+colnames(nonsig_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos','pos1','rsid','dot','dot1','source')
+nonsig_repeats=nonsig_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','rsid')]
+nonsig_rsids<-fread("~/projects/MPRA/WHR/results/nonsig_rsids.bed",header=FALSE)
+colnames(nonsig_rsids)<-c('chr','pos','pos1','rsid','dot','dot1','source')
+nonsig_repeats=merge(nonsig_rsids[,c('chr','rsid','pos','source')],nonsig_repeats,on='rsid',all.x=TRUE) %>% select(-source,source)
+nonsig_repeats$type="nonsig"
+
+dat=rbind(EMVar_repeats,enhancer_repeats,nonsig_repeats)
+EMVar_rsids=dat$rsid[dat$type=="EMVar"]
+dat<-dat[!(dat$type=="enhancer" & dat$rsid %in% EMVar_rsids),]
+dat<-dat %>% distinct(rsid,.keep_all=TRUE) #Picking only unique matches (throws out a few entries where there are multiple repeat subtypes)
+#write.table(dat,"~/midway/MPRA_repeats/MPRA_variants_repeats.txt",row.names=FALSE,sep='\t',quote=FALSE)
+```
+
+### Location of MPRA variants in repeats
+```{r fraction_repeats,echo=FALSE}
+summary=matrix(nrow=3,ncol=4)
+j=1
+for (i in c("EMVar","enhancer","nonsig")) {
+  n_vars=length(dat$rep_type[dat$type==i])
+  prop_rep=round(sum(!(is.na(dat$rep_type[dat$type==i])))/length(dat$rep_type[dat$type==i]),digits=4)
+  prop_alu=round(nrow(dat[dat$type==i & grepl("Alu",dat$rep_subtype),])/length(dat$rep_type[dat$type==i]),digits=4)
+  summary[j,]<-c(i,n_vars,prop_rep,prop_alu)
+  j=j+1
+}
+summary=as.data.frame(summary)
+colnames(summary)<-c("Variant type","Number of variants","Proportion in repeats","Proportion in Alus")
+summary$`Proportion in repeats`<-as.numeric(as.character(summary$`Proportion in repeats`))
+summary$`Proportion in Alus`<-as.numeric(as.character(summary$`Proportion in Alus`))
+summary$`Variant type`<-as.character(summary$`Variant type`)
+summary$`Variant type`[summary$`Variant type`=="enhancer"]<-"Enhancer"
+summary$`Variant type`[summary$`Variant type`=="nonsig"]<-"Nonsignificant"
+knitr::kable(summary)
+```
+
+### Retrovirus types in MPRA
+Types of repeats in EMVars:
+```{r repeat_types,echo=FALSE}
+knitr::kable(sort(table(dat$rep_type[dat$type=="EMVar"]),decreasing=TRUE),col.names=c('RV','count'))
+```
+
+Sub-types of repeats in EMVars:
+```{r repeat_subtypes,echo=FALSE}
+knitr::kable(head(sort(table(dat$rep_subtype[dat$type=="EMVar"]),decreasing=TRUE),27),col.names=c('RV subtype','count'))
+```
+
+### Strandedness of enhancer elements
+Are the Alus that drive expression in the same orientation as the barcode (i.e. on the + strand?)
+``` {r strand, echo=FALSE}
+knitr::kable(table(dat$type[grepl("Alu",dat$rep_subtype)],dat$rep_strand[grepl("Alu",dat$rep_subtype)]))
+```
+
+
+### Plot results with chi-square p values
+Are there more repeats and Alus in repeats than expected by chance?
+
+```{r plot_results,echo=FALSE}
+Alu_prop<-nrow(dat[grepl("Alu",dat$rep_subtype),])/nrow(dat)
+repeat_prop<-nrow(dat[dat$rep_type!=0,])/nrow(dat)
+dat <- data.frame(lapply(dat, as.character), stringsAsFactors=FALSE)
+dat[is.na(dat)]<-0
+
+# Repeats
+expected<-matrix(nrow=3,ncol=2)
+colnames(expected)<-c("repeats","no repeats")
+rownames(expected)<-c("EMVars","enhancers","nonsig")
+observed<-expected
+expected[1,1]<-nrow(dat[dat$type=="EMVar",])*repeat_prop
+expected[1,2]<-nrow(dat[dat$type=="EMVar",])*(1-repeat_prop)
+expected[2,1]<-nrow(dat[dat$type=="enhancer",])*repeat_prop
+expected[2,2]<-nrow(dat[dat$type=="enhancer",])*(1-repeat_prop)
+expected[3,1]<-nrow(dat[dat$type=="nonsig",])*repeat_prop
+expected[3,2]<-nrow(dat[dat$type=="nonsig",])*(1-repeat_prop)
+
+observed[1,1]<-nrow(dat[dat$type=="EMVar" & dat$rep_type!=0,])
+observed[1,2]<-nrow(dat[dat$type=="EMVar" & dat$rep_type==0,])
+observed[2,1]<-nrow(dat[dat$type=="enhancer" & dat$rep_type!=0,])
+observed[2,2]<-nrow(dat[dat$type=="enhancer" & dat$rep_type==0,])
+observed[3,1]<-nrow(dat[dat$type=="nonsig" & dat$rep_type!=0,])
+observed[3,2]<-nrow(dat[dat$type=="nonsig" & dat$rep_type==0,])
+
+repeat_p<-chisq.test(observed,expected)$p.value
+
+#Alus
+expected<-matrix(nrow=3,ncol=2)
+colnames(expected)<-c("repeats","no repeats")
+rownames(expected)<-c("EMVars","enhancers","nonsig")
+observed<-expected
+expected[1,1]<-nrow(dat[dat$type=="EMVar",])*Alu_prop
+expected[1,2]<-nrow(dat[dat$type=="EMVar",])*(1-Alu_prop)
+expected[2,1]<-nrow(dat[dat$type=="enhancer",])*Alu_prop
+expected[2,2]<-nrow(dat[dat$type=="enhancer",])*(1-Alu_prop)
+expected[3,1]<-nrow(dat[dat$type=="nonsig",])*Alu_prop
+expected[3,2]<-nrow(dat[dat$type=="nonsig",])*(1-Alu_prop)
+
+observed[1,1]<-nrow(dat[dat$type=="EMVar" & grepl("Alu",dat$rep_subtype),])
+observed[1,2]<-nrow(dat[dat$type=="EMVar" & !(grepl("Alu",dat$rep_subtype)),])
+observed[2,1]<-nrow(dat[dat$type=="enhancer" & grepl("Alu",dat$rep_subtype),])
+observed[2,2]<-nrow(dat[dat$type=="enhancer" & !(grepl("Alu",dat$rep_subtype)),])
+observed[3,1]<-nrow(dat[dat$type=="nonsig" & grepl("Alu",dat$rep_subtype),])
+observed[3,2]<-nrow(dat[dat$type=="nonsig" & !(grepl("Alu",dat$rep_subtype)),])
+
+Alu_p<-chisq.test(observed,expected)$p.value
+
+## Get genome proportions
+repeat_genome_prop<-scan("~/midway/MPRA_repeats/repeat_prop")
+Alu_genome_prop<-scan("~/midway/MPRA_repeats/Alu_prop")
+summary<-as.data.frame(rbind(summary,c("Genome proportion",NA,repeat_genome_prop,Alu_genome_prop)),stringsAsFactors=FALSE)
+summary$`Proportion in repeats`<-as.numeric(summary$`Proportion in repeats`)
+summary$`Proportion in Alus`<-as.numeric(summary$`Proportion in Alus`)
+summary$`Variant type`<-factor(summary$`Variant type`,levels=c("EMVar","Enhancer","Nonsignificant","Genome proportion"))
+
+## Plot results
+#pdf("MPRA_vars_in_repeats.pdf",width=7,height=3)
+ggplot(summary)+
+  geom_col(aes(x=`Variant type`,y=`Proportion in repeats`,fill=`Variant type`))+
+  annotate("text",x=2.65,y=0.85,label=paste("Chisq p= \n",formatC(repeat_p,digits=4),sep=''),cex=6)+
+  theme_minimal()+
+  scale_y_continuous(limits=c(0,1))+
+  scale_x_discrete(name='')+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[3,1:3])),darken(rgb(pony_colors[5,1:3])),darken(rgb(pony_colors[9,1:3])),"gray80"))+
+  theme(axis.text.x=element_text(size=20,angle=-45),
+        axis.text.y=element_text(size=20),
+        axis.title=element_text(size=20),
+        legend.position="none")+
+  coord_flip()
+#dev.off()
+
+#pdf("MPRA_vars_in_Alus.pdf",width=7,height=3)
+ggplot(summary)+
+  geom_col(aes(x=`Variant type`,y=`Proportion in Alus`,fill=`Variant type`))+
+  annotate("text",x=2.65,y=0.8,label=paste("Chisq p= \n",formatC(Alu_p,digits=4),sep=''),cex=6)+
+  theme_minimal()+
+  scale_y_continuous(limits=c(0,1))+
+  scale_x_discrete(name='')+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[3,1:3])),darken(rgb(pony_colors[5,1:3])),darken(rgb(pony_colors[9,1:3])),"gray80"))+
+  theme(axis.text.x=element_text(size=20,angle=-45),
+        axis.text.y=element_text(size=20),
+        axis.title=element_text(size=20),
+        legend.position="none")+
+  coord_flip()
+#dev.off()
+
+```
+
+## Expression of Alu elements
+
+Are sequences containing Alu elements more highly expressed than sequences not containing Alu elements?
+
+``` {r read_in_data,echo=FALSE}
+barcodes<-as.data.frame(fread("~/projects/MPRA/WHR/results/barcode_activity.txt"))
+EMVars<-fread("~/projects/MPRA/WHR/results/sig_EMVars.bed",header=FALSE)
+enhancers<-fread("~/projects/MPRA/WHR/results/sig_enhancers.bed",header=FALSE)
+nonsig<-fread("~/projects/MPRA/WHR/results/nonsig_rsids.bed",header=FALSE)
+enhancers<-enhancers[!(enhancers$rsid %in% EMVars$rsid),]
+
+colnames(nonsig)<-c("chr","start","stop","rsid","dot","dot1","source")
+colnames(enhancers)<-c("chr","start","stop","rsid","dot","dot1","source")
+colnames(EMVars)<-c("chr","start","stop","rsid","dot","dot1","source")
+```
+
+```{r summary_of_distribution,echo=FALSE}
+barcodes$type<-NA
+nonsig_sine_rsids<-nonsig_repeats[grepl("Alu",nonsig_repeats$rep_subtype)]$rsid
+nonsig_nosine_rsids<-nonsig_repeats[!(grepl("Alu",nonsig_repeats$rep_subtype))]$rsid
+
+barcodes$type[barcodes$rsid %in% nonsig_repeats[!(grepl("Alu",nonsig_repeats$rep_subtype))]$rsid]<-"Nonsig, no Alus"
+barcodes$type[barcodes$rsid %in% nonsig_repeats[grepl("Alu",nonsig_repeats$rep_subtype)]$rsid]<-"Nonsig, Alus" #SINE has to be second: some EMVars are in two elements if I use -F 0.25
+barcodes$type[barcodes$rsid %in% enhancer_repeats[!(grepl("Alu",enhancer_repeats$rep_subtype))]$rsid]<-"Enhancer, no Alus"
+barcodes$type[barcodes$rsid %in% enhancer_repeats[grepl("Alu",enhancer_repeats$rep_subtype)]$rsid]<-"Enhancer, Alus"
+barcodes$type[barcodes$rsid %in% EMVar_repeats[!(grepl("Alu",EMVar_repeats$rep_subtype))]$rsid]<-"EMVar, no Alus"
+barcodes$type[barcodes$rsid %in% EMVar_repeats[grepl("Alu",EMVar_repeats$rep_subtype)]$rsid]<-"EMVar, Alus"
+
+
+print("qnorm from nonsignificant sequences without Alu elements, Rep 1")
+summary(barcodes$qnorm_Rep1[barcodes$type=="Nonsig, no Alus"])
+print("qnorm from nonsignificant sequences with Alu elements, Rep 1")
+summary(barcodes$qnorm_Rep1[barcodes$type=="Nonsig, Alus"])
+print("qnorm from enhancer sequences without Alu elements, Rep 1")
+summary(barcodes$qnorm_Rep1[barcodes$type=="Enhancer, no Alus"])
+print("qnorm from enhancer sequences with Alu elements, Rep 1")
+summary(barcodes$qnorm_Rep1[barcodes$type=="Enhancer, Alus"])
+print("qnorm from EMVar sequences without Alu elements, Rep 1")
+summary(barcodes$qnorm_Rep1[barcodes$type=="EMVar, no Alus"])
+print("qnorm from EMVar sequences with Alu elements, Rep 1")
+summary(barcodes$qnorm_Rep1[barcodes$type=="EMVar, Alus"])
+```
+
+### Significance and visualization
+
+In the plots below, you can see that the Alu-containing sequences have higher expression in enhancers and EMVars, but this isn't true for nonsignificant sequences.
+
+
+```{r plot_alus,echo=FALSE}
+
+barcodes$qnorm_avg<-rowMeans(barcodes[,grepl("qnorm_",colnames(barcodes))])
+rsid_dat <- barcodes %>% group_by(rsid) %>% summarize(qnorm_avg=mean(qnorm_avg),type = first(na.omit(type)))
+
+nonsig_ttest<-t.test(rsid_dat$qnorm_avg[rsid_dat$type=="Nonsig, Alus"],rsid_dat$qnorm_avg[rsid_dat$type=="Nonsig, no Alus"])
+enhancer_ttest<-t.test(rsid_dat$qnorm_avg[rsid_dat$type=="Enhancer, Alus"],rsid_dat$qnorm_avg[rsid_dat$type=="Enhancer, no Alus"])
+EMVar_ttest<-t.test(rsid_dat$qnorm_avg[rsid_dat$type=="EMVar, Alus"],rsid_dat$qnorm_avg[rsid_dat$type=="EMVar, no Alus"])
+
+M<-ggplot(rsid_dat[grepl("EMVar",rsid_dat$type),])+
+  geom_violin(aes(x=type,y=qnorm_avg,fill=type),draw_quantiles=c(0.5))+
+  scale_x_discrete(name='')+
+  scale_y_continuous(name="Average normalized activity per variant")+
+  annotate("text",x=1.18,y=8.75,label=paste("p=",formatC(EMVar_ttest$p.value, format = "e", digits = 3),sep=''),cex=6)+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[3,1:3])),lighten(rgb(pony_colors[3,1:3]))))+
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=-45),
+        axis.text=element_text(size=16),
+        axis.title=element_text(size=15),
+        legend.position = "none")
+E<-ggplot(rsid_dat[grepl("Enhancer",rsid_dat$type),])+
+  geom_violin(aes(x=type,y=qnorm_avg,fill=type),draw_quantiles=c(0.5))+
+  scale_x_discrete(name='')+
+  scale_y_continuous(name="Average normalized activity per variant")+
+  annotate("text",x=1.18,y=9.25,label=paste("p=",formatC(enhancer_ttest$p.value, format = "e", digits = 3),sep=''),cex=6)+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[5,1:3])),lighten(rgb(pony_colors[5,1:3]))))+
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=-45),
+        axis.text=element_text(size=16),
+        axis.title=element_text(size=15),
+        legend.position = "none")
+N<-ggplot(rsid_dat[grepl("Nonsig",rsid_dat$type),])+
+  geom_violin(aes(x=type,y=qnorm_avg,fill=type),draw_quantiles=c(0.5))+
+  scale_x_discrete(name='')+
+  scale_y_continuous(name="Average normalized activity per variant")+
+  annotate("text",x=1.18,y=3.5,label=paste("p=",formatC(nonsig_ttest$p.value, format="e",digits = 3),sep=''),cex=6)+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[9,1:3])),lighten(rgb(pony_colors[9,1:3]))))+
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=-45),
+        axis.text=element_text(size=16),
+        axis.title=element_text(size=15),
+        legend.position = "none")
+
+#pdf("Alus_vs_noAlus.pdf",width=8,height=5)
+#grid.arrange(M,E,N,nrow=1)
+#dev.off()
+
+grid.arrange(M,E,N,nrow=1)
+
+```
+
+### Motifs in expressed Alus
+Do these Alus with increased expression contain the GAGGTCA motif?
+
+```{r motifs_in_expressed_Alus,echo=FALSE}
+sig_Alu_rsids<-rsid_dat$rsid[(rsid_dat$type=="Enhancer, Alus" | rsid_dat$type=="EMVar, Alus") & rsid_dat$qnorm_avg>=2.5]
+sig_Alu_locs<-dat[dat$rsid %in% sig_Alu_rsids,]
+write.table(sig_Alu_locs[,c("chr","rep_start","rep_stop")],"Alus_high_exp.bed",quote=FALSE,sep='\t',row.names=FALSE,col.names=FALSE)
+system("bedtools getfasta -fi ~/midway/genos/hg38/GRCh38.primary_assembly.genome.fa -bed Alus_high_exp.bed -tab -fo fa/Alus_high_exp_seqs")
+temp<-fread("fa/Alus_high_exp_seqs",header=FALSE)
+system("rm Alus_high_exp.bed fa/Alus_high_exp_seqs ")
+
+sum(grepl("GAGGTCA",temp$V2))/nrow(temp)
+regmatches(temp$V2[1],regexpr("GAG.{1,5}",temp$V2[1]))
+```
